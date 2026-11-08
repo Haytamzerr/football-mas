@@ -67,6 +67,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
+If port 8000 is already used by another program, pick another one: `PORT=8001 python main.py` (PowerShell: `$env:PORT=8001; python main.py`).
+
 Open <http://localhost:8000>, choose a club for each team and press **START MATCH**. The API docs are at <http://localhost:8000/docs>.
 
 ### Tests

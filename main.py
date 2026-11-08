@@ -183,5 +183,8 @@ async def validate(req: ValidateRequest):
 
 
 if __name__ == "__main__":
-    print("\n  Football MAS is running: open http://localhost:8000 in your browser\n")
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, log_level="info")
+    import os
+
+    port = int(os.environ.get("PORT", 8000))  # PORT=8001 python main.py if 8000 is taken
+    print(f"\n  Football MAS is running: open http://localhost:{port} in your browser\n")
+    uvicorn.run("main:app", host="127.0.0.1", port=port, log_level="info")
