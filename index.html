@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Football MAS — Tactical Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:     #0b0d0c; --s1: #141716; --s2: #1b1f1d; --s3: #232826;
+  --border: rgba(255,255,255,.06); --text: #dfe8e2; --muted: #586260;
+  --a: #c8ff44; --b: #ff4466; --ball: #ffe84a; --r: 8px;
+  --fd: 'Bebas Neue', sans-serif; --fb: 'DM Sans', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--fb);font-size:13px}
+
+/* ── SHELL ── */
+#shell{display:grid;grid-template-rows:44px 1fr 68px;grid-template-columns:230px 1fr 210px;height:100vh}
+
+/* ── HEADER ── */
+#hdr{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--s1);border-bottom:1px solid var(--border);z-index:20}
+#hdr h1{font-family:var(--fd);font-size:22px;letter-spacing:.07em;color:var(--a)}
+#hdr .tag{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
+#clock{font-family:var(--fd);font-size:30px;letter-spacing:.06em;min-width:76px;text-align:right;transition:color .3s}
+#clock.urgent{color:var(--b)}
+
+/* ── SIDES ── */
+.side{background:var(--s1);padding:12px 11px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+#side-l{border-right:1px solid var(--border)}
+#side-r{border-left:1px solid var(--border)}
+
+/* ── PITCH ── */
+#arena{position:relative;display:flex;align-items:center;justify-content:center;background:#101410;overflow:hidden}
+canvas{display:block}
+
+/* ── FOOTER ── */
+#foot{grid-column:1/-1;background:var(--s1);border-top:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 18px;overflow:hidden}
+#ticker{flex:1;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ticker b{color:var(--a);font-weight:500}
+#conn-dot{width:7px;height:7px;border-radius:50%;background:var(--b);flex-shrink:0;transition:background .4s}
+#conn-dot.ok{background:#44ff88}
+#conn-lbl{font-size:10px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+
+/* ── ATOMS ── */
+.lbl{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.divider{height:1px;background:var(--border);flex-shrink:0}
+
+/* ── CLUB SELECTOR ── */
+.club-section{display:flex;flex-direction:column;gap:6px}
+.team-tag{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px}
+.team-tag .pip{width:8px;height:8px;border-radius:50%}
+.team-tag.a .pip{background:var(--a)} .team-tag.b .pip{background:var(--b)}
+
+.club-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.club-card{
+  padding:7px 8px;border:1px solid var(--border);border-radius:6px;
+  background:var(--s2);cursor:pointer;transition:all .18s;
+  display:flex;flex-direction:column;gap:2px;
+}
+.club-card:hover{border-color:rgba(255,255,255,.18);background:var(--s3)}
+.club-card.selected-a{border-color:var(--a);background:rgba(200,255,68,.08)}
+.club-card.selected-b{border-color:var(--b);background:rgba(255,68,102,.08)}
+.club-badge{font-size:15px;line-height:1}
+.club-name{font-size:10px;font-weight:600;color:var(--text);line-height:1.2}
+.club-sub{font-size:9px;color:var(--muted);letter-spacing:.05em}
+.club-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:3px;vertical-align:middle}
+
+/* Formation & aggression mini display */
+.club-info-bar{
+  display:flex;gap:6px;align-items:center;
+  padding:5px 8px;border-radius:5px;background:var(--s2);border:1px solid var(--border);
+  font-size:10px;color:var(--muted);
+}
+.club-info-bar .val{color:var(--text);font-weight:600;font-size:11px}
+
+/* ── BUTTONS ── */
+#btn-start{width:100%;padding:10px;border:none;border-radius:var(--r);background:var(--a);color:#0b0d0c;font-family:var(--fd);font-size:19px;letter-spacing:.1em;cursor:pointer;transition:opacity .2s,transform .1s}
+#btn-start:hover{opacity:.82;transform:translateY(-1px)}
+#btn-start:active{transform:translateY(0)}
+#btn-start:disabled{opacity:.35;cursor:not-allowed;transform:none}
+#btn-reset{width:100%;padding:6px;border:1px solid var(--border);border-radius:var(--r);background:transparent;color:var(--muted);font-size:12px;cursor:pointer;transition:.2s}
+#btn-reset:hover{border-color:var(--text);color:var(--text)}
+
+/* Validate button */
+#btn-validate{
+  width:100%;padding:8px;border:1px solid var(--a);border-radius:var(--r);
+  background:transparent;color:var(--a);font-family:var(--fd);font-size:16px;
+  letter-spacing:.08em;cursor:pointer;transition:.2s;
+}
+#btn-validate:hover{background:rgba(200,255,68,.1)}
+#btn-validate:disabled{opacity:.35;cursor:not-allowed}
+
+/* kick-off pills */
+.pills{display:flex;gap:5px}
+.pill{flex:1;padding:6px 4px;text-align:center;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);font-size:11px;font-weight:600;cursor:pointer;user-select:none;transition:all .2s}
+.pill.on-a{background:rgba(200,255,68,.10);border-color:var(--a);color:var(--a)}
+.pill.on-b{background:rgba(255,68,102,.10);border-color:var(--b);color:var(--b)}
+
+/* ── RIGHT PANEL ── */
+.scoreboard{display:flex;align-items:center;justify-content:space-between;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:10px 9px}
+.sc-team{display:flex;flex-direction:column;align-items:center;gap:3px}
+.sc-name{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.sc-club{font-size:9px;color:var(--muted);max-width:70px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-val{font-family:var(--fd);font-size:40px;line-height:1}
+.sc-team.a .sc-val{color:var(--a)} .sc-team.b .sc-val{color:var(--b)}
+.sc-sep{font-family:var(--fd);font-size:22px;color:var(--muted)}
+
+.stat-block{display:flex;flex-direction:column;gap:4px}
+.stat-header{display:flex;justify-content:space-between;align-items:center;font-size:11px}
+.sv-a{color:var(--a);font-weight:600} .sv-b{color:var(--b);font-weight:600}
+.stat-lbl{color:var(--muted);font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+.bar-track{height:4px;background:var(--s3);border-radius:2px;display:flex;overflow:hidden}
+.bar-a{background:var(--a);height:100%;transition:width .5s ease}
+.bar-b{background:var(--b);height:100%;flex:1}
+
+.feed{display:flex;flex-direction:column;gap:2px;font-size:11px;line-height:1.7;max-height:110px;overflow-y:auto}
+.feed::-webkit-scrollbar{width:2px}
+.ev-goal{color:var(--a);font-weight:600} .ev-pass{color:#7affc8}
+.ev-shot{color:#ffca6a} .ev-warn,.ev-time{color:var(--muted)}
+
+/* ── VALIDATION PANEL ── */
+#val-panel{
+  position:absolute;inset:0;background:rgba(11,13,12,.92);backdrop-filter:blur(12px);
+  z-index:40;display:none;flex-direction:column;overflow:hidden;
+}
+#val-panel.show{display:flex}
+#val-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+#val-header h2{font-family:var(--fd);font-size:22px;letter-spacing:.07em;color:var(--a)}
+#btn-val-close{
+  padding:5px 14px;border:1px solid var(--border);border-radius:6px;
+  background:transparent;color:var(--muted);font-size:12px;cursor:pointer;transition:.2s;
+}
+#btn-val-close:hover{color:var(--text);border-color:var(--text)}
+
+#val-body{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:14px}
+#val-body::-webkit-scrollbar{width:3px}
+#val-body::-webkit-scrollbar-thumb{background:var(--border)}
+
+/* Loading spinner */
+#val-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:14px}
+.spinner{width:40px;height:40px;border:3px solid var(--s3);border-top-color:var(--a);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#val-loading p{color:var(--muted);font-size:13px;letter-spacing:.05em}
+
+/* Summary cards */
+.val-summary{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px}
+.val-card{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center}
+.val-card .big{font-family:var(--fd);font-size:30px;line-height:1}
+.val-card .sub{font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+
+/* Club header */
+.val-clubs{display:flex;align-items:center;gap:10px;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:12px 16px}
+.val-club{display:flex;flex-direction:column;gap:2px;flex:1}
+.val-club-name{font-size:16px;font-weight:700;color:var(--text)}
+.val-club-sub{font-size:10px;color:var(--muted)}
+.val-vs{font-family:var(--fd);font-size:24px;color:var(--muted)}
+
+/* Match table */
+.val-table{width:100%;border-collapse:collapse;font-size:12px}
+.val-table th{text-align:left;padding:5px 10px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border)}
+.val-table td{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.03)}
+.val-table tr:hover td{background:rgba(255,255,255,.02)}
+.win-a{color:var(--a);font-weight:600} .win-b{color:var(--b);font-weight:600} .win-d{color:var(--muted)}
+
+/* winner banner */
+.val-winner{
+  padding:14px 18px;border-radius:8px;text-align:center;
+  background:rgba(200,255,68,.08);border:1px solid var(--a);
+}
+.val-winner .wname{font-family:var(--fd);font-size:28px;color:var(--a);letter-spacing:.07em}
+.val-winner .wsub{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* ── OVERLAYS ── */
+.overlay{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(11,13,12,.82);backdrop-filter:blur(10px);z-index:30}
+.overlay.show{display:flex}
+#ov-count .big{font-family:var(--fd);font-size:130px;line-height:1;color:var(--a);text-shadow:0 0 70px rgba(200,255,68,.5)}
+#ov-count .sub{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+#ov-final .ft{font-family:var(--fd);font-size:54px;letter-spacing:.07em;color:var(--a)}
+#ov-final .fs{font-family:var(--fd);font-size:46px;letter-spacing:.1em}
+#ov-final .fn{max-width:420px;text-align:center;font-size:12px;line-height:1.7;color:var(--muted);margin-top:4px}
+#ov-final .again{margin-top:16px;padding:11px 36px;border:1px solid var(--a);border-radius:var(--r);background:transparent;color:var(--a);font-family:var(--fd);font-size:20px;letter-spacing:.1em;cursor:pointer;transition:.2s}
+#ov-final .again:hover{background:var(--a);color:#0b0d0c}
+
+#btn-heat{position:absolute;bottom:9px;right:9px;padding:4px 11px;border:1px solid var(--border);border-radius:5px;background:var(--s2);color:var(--muted);font-size:11px;cursor:pointer;transition:.2s;z-index:10}
+#btn-heat:hover{color:var(--text)}
+#btn-heat.on{border-color:var(--a);color:var(--a)}
+
+/* scrollbar */
+::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="shell">
+
+<!-- HEADER -->
+<header id="hdr">
+  <div><h1>FOOTBALL MAS</h1><div class="tag">Multi-Agent Tactical Simulator</div></div>
+  <div id="clock">00:30</div>
+</header>
+
+<!-- LEFT SIDEBAR -->
+<aside class="side" id="side-l">
+
+  <!-- Team A club picker -->
+  <div class="club-section">
+    <div class="team-tag a"><span class="pip"></span>TEAM A</div>
+    <div class="club-grid" id="grid-a"></div>
+    <div class="club-info-bar" id="info-a">
+      <span>Formation:</span><span class="val" id="form-a">—</span>
+      <span style="margin-left:6px">Style:</span><span class="val" id="agg-a">—</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Team B club picker -->
+  <div class="club-section">
+    <div class="team-tag b"><span class="pip"></span>TEAM B</div>
+    <div class="club-grid" id="grid-b"></div>
+    <div class="club-info-bar" id="info-b">
+      <span>Formation:</span><span class="val" id="form-b">—</span>
+      <span style="margin-left:6px">Style:</span><span class="val" id="agg-b">—</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Kick-off -->
+  <div>
+    <div class="lbl">Kick-off</div>
+    <div class="pills">
+      <div class="pill on-a" id="att-a" onclick="setAttack('A')">TEAM A</div>
+      <div class="pill"      id="att-b" onclick="setAttack('B')">TEAM B</div>
+    </div>
+  </div>
+
+  <button id="btn-start" onclick="startMatch()" disabled>▶  START MATCH</button>
+  <button id="btn-reset"  onclick="resetMatch()">↺  Reset</button>
+  <button id="btn-validate" onclick="startValidation()" disabled>⚡  8-MATCH VALIDATION</button>
+
+</aside>
+
+<!-- PITCH -->
+<main id="arena">
+  <canvas id="c"></canvas>
+
+  <!-- Countdown -->
+  <div class="overlay" id="ov-count">
+    <div class="big" id="cnt-num">3</div>
+    <div class="sub">Match starts in</div>
+  </div>
+
+  <!-- Full-time -->
+  <div class="overlay" id="ov-final">
+    <div class="ft" id="final-title">FULL TIME</div>
+    <div class="fs" id="final-score">A 0 — 0 B</div>
+    <div class="fn" id="final-notes"></div>
+    <button class="again" onclick="resetMatch()">PLAY AGAIN</button>
+  </div>
+
+  <!-- 8-match validation panel (inside arena) -->
+  <div id="val-panel">
+    <div id="val-header">
+      <h2>8-MATCH VALIDATION</h2>
+      <button id="btn-val-close" onclick="closeValidation()">✕ Close</button>
+    </div>
+    <div id="val-body">
+      <div id="val-loading">
+        <div class="spinner"></div>
+        <p id="val-loading-txt">Running 8 matches…</p>
+      </div>
+      <div id="val-results" style="display:none;flex-direction:column;gap:12px"></div>
+    </div>
+  </div>
+
+  <button id="btn-heat" onclick="toggleHeat()">🔥 HEATMAP</button>
+</main>
+
+<!-- RIGHT PANEL -->
+<aside class="side" id="side-r">
+  <div class="lbl">Score</div>
+  <div class="scoreboard">
+    <div class="sc-team a">
+      <div class="sc-name">TEAM A</div>
+      <div class="sc-club" id="sc-club-a">—</div>
+      <div class="sc-val" id="sc-a">0</div>
+    </div>
+    <div class="sc-sep">:</div>
+    <div class="sc-team b">
+      <div class="sc-name">TEAM B</div>
+      <div class="sc-club" id="sc-club-b">—</div>
+      <div class="sc-val" id="sc-b">0</div>
+    </div>
+  </div>
+
+  <div class="stat-block">
+    <div class="stat-header"><span class="sv-a" id="pv-a">50%</span><span class="stat-lbl">Possession</span><span class="sv-b" id="pv-b">50%</span></div>
+    <div class="bar-track"><div class="bar-a" id="pb-a" style="width:50%"></div><div class="bar-b"></div></div>
+  </div>
+  <div class="stat-block">
+    <div class="stat-header"><span class="sv-a" id="pass-a">0</span><span class="stat-lbl">Passes</span><span class="sv-b" id="pass-b">0</span></div>
+    <div class="bar-track"><div class="bar-a" id="passb-a" style="width:50%"></div><div class="bar-b"></div></div>
+  </div>
+  <div class="stat-block">
+    <div class="stat-header"><span class="sv-a" id="shot-a">0</span><span class="stat-lbl">Shots</span><span class="sv-b" id="shot-b">0</span></div>
+    <div class="bar-track"><div class="bar-a" id="shotb-a" style="width:50%"></div><div class="bar-b"></div></div>
+  </div>
+  <div class="stat-block">
+    <div class="stat-header"><span class="sv-a" id="int-a">0</span><span class="stat-lbl">Interceptions</span><span class="sv-b" id="int-b">0</span></div>
+    <div class="bar-track"><div class="bar-a" id="intb-a" style="width:50%"></div><div class="bar-b"></div></div>
+  </div>
+
+  <div class="divider"></div>
+  <div class="lbl">Match Events</div>
+  <div class="feed" id="feed">Select clubs to start…</div>
+</aside>
+
+<!-- FOOTER -->
+<footer id="foot">
+  <div id="conn-dot"></div>
+  <div id="conn-lbl">offline</div>
+  <div id="ticker"><b>●</b>&nbsp; Select clubs and press START</div>
+</footer>
+
+</div>
+
+<script>
+"use strict";
+/* ═══════════════════  CONFIG  ═══════════════════ */
+// Same server when the page is served by main.py; localhost:8000 when index.html is opened as a file
+const API     = location.protocol.startsWith("http") ? location.origin : "http://localhost:8000";
+const POLL_MS = 55;
+const PW = 100, PH = 60;
+const LERP = 0.20, LERP_B = 0.28;
+
+/* ═══════════════════  CANVAS  ═══════════════════ */
+const canvas = document.getElementById("c");
+const ctx    = canvas.getContext("2d");
+function resize(){
+  const a = document.getElementById("arena");
+  const cw = a.clientWidth-24, ch = a.clientHeight-24;
+  const aspect = PW/PH;
+  let w=cw, h=cw/aspect;
+  if(h>ch){h=ch;w=h*aspect}
+  canvas.width=Math.floor(w); canvas.height=Math.floor(h);
+}
+window.addEventListener("resize",resize); resize();
+const px=(lx,ly)=>[lx/PW*canvas.width, ly/PH*canvas.height];
+
+/* ═══════════════════  STATE  ═══════════════════ */
+let selectedA = null, selectedB = null;
+let attackTeam = "A";
+let pollTimer  = null;
+let live       = false;
+let heatOn     = false;
+let clubs      = [];
+
+let rAgents = {}, rBall = {x:50,y:30};
+const heat = {A:[],B:[]};
+const HEAT_MAX = 1800;
+
+/* ═══════════════════  PITCH  ═══════════════════ */
+function drawPitch(){
+  const W=canvas.width, H=canvas.height;
+  for(let i=0;i<8;i++){
+    ctx.fillStyle = i%2===0?"#28693a":"#236130";
+    ctx.fillRect(i*W/8,0,W/8,H);
+  }
+  ctx.strokeStyle="rgba(255,255,255,.44)"; ctx.lineWidth=1; ctx.setLineDash([]);
+  ctx.strokeRect(2,2,W-4,H-4);
+  ctx.beginPath(); ctx.moveTo(W/2,2); ctx.lineTo(W/2,H-2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(W/2,H/2,H*.165,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle="rgba(255,255,255,.65)";
+  ctx.beginPath(); ctx.arc(W/2,H/2,3,0,Math.PI*2); ctx.fill();
+  const paW=W*.148,paH=H*.55,paY=(H-paH)/2;
+  ctx.strokeRect(2,paY,paW,paH); ctx.strokeRect(W-2-paW,paY,paW,paH);
+  const gbW=W*.06,gbH=H*.30,gbY=(H-gbH)/2;
+  ctx.strokeRect(2,gbY,gbW,gbH); ctx.strokeRect(W-2-gbW,gbY,gbW,gbH);
+  ctx.strokeStyle="rgba(255,255,255,.85)"; ctx.lineWidth=2;
+  const gH=H*.175,gW=7,gY=(H-gH)/2;
+  ctx.strokeRect(0,gY,gW,gH); ctx.strokeRect(W-gW,gY,gW,gH);
+  ctx.fillStyle="rgba(255,255,255,.50)"; ctx.lineWidth=1;
+  const soff=paW*.62;
+  [[2+soff,H/2],[W-2-soff,H/2]].forEach(([sx,sy])=>{
+    ctx.beginPath(); ctx.arc(sx,sy,2.2,0,Math.PI*2); ctx.fill();
+  });
+  ctx.strokeStyle="rgba(255,255,255,.30)"; ctx.lineWidth=1;
+  [[2,2,0],[W-2,2,.5],[2,H-2,-.5],[W-2,H-2,1]].forEach(([cx,cy,rs])=>{
+    ctx.beginPath(); ctx.arc(cx,cy,9,rs*Math.PI,(rs+.5)*Math.PI); ctx.stroke();
+  });
+}
+
+function drawHeat(){
+  if(!heatOn) return;
+  ["A","B"].forEach(t=>{
+    const col=t==="A"?"200,255,68":"255,68,102";
+    heat[t].slice(-900).forEach(([lx,ly])=>{
+      const [cx,cy]=px(lx,ly);
+      const g=ctx.createRadialGradient(cx,cy,0,cx,cy,14);
+      g.addColorStop(0,`rgba(${col},.055)`); g.addColorStop(1,`rgba(${col},0)`);
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,14,0,Math.PI*2); ctx.fill();
+    });
+  });
+}
+
+/* ═══════════════════  AGENT COLORS FROM CLUBS  ═══════════════════ */
+function getTeamColor(team){
+  const club = team==="A" ? selectedA : selectedB;
+  if(club && club.color_a) return "#"+club.color_a;
+  return team==="A" ? "#c8ff44" : "#ff4466";
+}
+function getTeamGlow(team){
+  const c = getTeamColor(team);
+  return c+"55";
+}
+
+const ROLE_R  = {goalkeeper:7.5,defender:5.8,midfielder:5.8,striker:6.2};
+const ACT_COL = {
+  shoot:"#ffe066",pass:"#7affc8",dribble:"#c8ff44",
+  intercept:"#ff8c42",press:"#ff4466",support:"#a8d8ff",
+  move_to_position:"#2e3530",idle:"#242925"
+};
+
+function drawAgents(){
+  Object.values(rAgents).forEach(ag=>{
+    const [cx,cy]=px(ag.x,ag.y);
+    const r   =ROLE_R[ag.role]??6;
+    const col  =getTeamColor(ag.team);
+    const glow =getTeamGlow(ag.team);
+    const isGK =ag.role==="goalkeeper";
+    ctx.shadowColor=glow;
+    ctx.shadowBlur =ag.has_ball?22:(isGK?10:5);
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
+    if(isGK){
+      ctx.fillStyle="#111"; ctx.fill();
+      ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.stroke();
+    } else {
+      ctx.fillStyle=col; ctx.fill();
+    }
+    ctx.shadowBlur=0;
+    if(ag.has_ball){
+      ctx.strokeStyle="#fff"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(cx,cy,r+4.5,0,Math.PI*2); ctx.stroke();
+    }
+    ctx.fillStyle=ACT_COL[ag.last_action]??"#444";
+    ctx.beginPath(); ctx.arc(cx+r*.58,cy-r*.58,2.4,0,Math.PI*2); ctx.fill();
+  });
+}
+
+function drawBall(){
+  const [cx,cy]=px(rBall.x,rBall.y);
+  ctx.shadowColor="rgba(255,232,74,.70)"; ctx.shadowBlur=18;
+  const g=ctx.createRadialGradient(cx-1.5,cy-1.5,0.4,cx,cy,5.5);
+  g.addColorStop(0,"#fffce0"); g.addColorStop(1,"#ffe84a");
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,5.5,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.strokeStyle="rgba(0,0,0,.28)"; ctx.lineWidth=0.9;
+  ctx.beginPath(); ctx.arc(cx,cy,5.5,0,Math.PI*2); ctx.stroke();
+}
+
+function frame(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawPitch(); drawHeat(); drawAgents(); drawBall();
+  requestAnimationFrame(frame);
+}
+frame();
+
+/* ═══════════════════  INTERPOLATION  ═══════════════════ */
+const lerp=(a,b,t)=>a+(b-a)*t;
+function interpolate(state){
+  if(!state?.agents) return;
+  state.agents.forEach(ag=>{
+    const r=rAgents[ag.id];
+    if(!r){ rAgents[ag.id]={...ag}; }
+    else{
+      r.x=lerp(r.x,ag.x,LERP); r.y=lerp(r.y,ag.y,LERP);
+      r.has_ball=ag.has_ball; r.team=ag.team; r.role=ag.role; r.last_action=ag.last_action;
+    }
+    if(Math.random()<.20){
+      heat[ag.team].push([ag.x,ag.y]);
+      if(heat[ag.team].length>HEAT_MAX) heat[ag.team].shift();
+    }
+  });
+  rBall.x=lerp(rBall.x,state.ball.x,LERP_B);
+  rBall.y=lerp(rBall.y,state.ball.y,LERP_B);
+}
+
+/* ═══════════════════  UI UPDATES  ═══════════════════ */
+function updateUI(s){
+  const rem=s.time_remaining??0;
+  const mm=String(Math.floor(rem/60)).padStart(2,"0");
+  const ss=String(Math.floor(rem%60)).padStart(2,"0");
+  const clk=document.getElementById("clock");
+  clk.textContent=`${mm}:${ss}`;
+  clk.className=(rem<10&&rem>0)?"urgent":"";
+
+  document.getElementById("sc-a").textContent=s.score?.A??0;
+  document.getElementById("sc-b").textContent=s.score?.B??0;
+  const nameA = s.club_a?.name || "Team A";
+  const nameB = s.club_b?.name || "Team B";
+  document.getElementById("sc-club-a").textContent=nameA;
+  document.getElementById("sc-club-b").textContent=nameB;
+
+  const p=s.stats?.possession_pct??{A:50,B:50};
+  document.getElementById("pv-a").textContent=`${p.A??50}%`;
+  document.getElementById("pv-b").textContent=`${p.B??50}%`;
+  document.getElementById("pb-a").style.width=`${p.A??50}%`;
+
+  const ps=s.stats?.passes??{A:0,B:0};
+  const ptot=Math.max(1,(ps.A??0)+(ps.B??0));
+  document.getElementById("pass-a").textContent=ps.A??0;
+  document.getElementById("pass-b").textContent=ps.B??0;
+  document.getElementById("passb-a").style.width=`${Math.round((ps.A??0)/ptot*100)}%`;
+
+  const sh=s.stats?.shots??{A:0,B:0};
+  const stot=Math.max(1,(sh.A??0)+(sh.B??0));
+  document.getElementById("shot-a").textContent=sh.A??0;
+  document.getElementById("shot-b").textContent=sh.B??0;
+  document.getElementById("shotb-a").style.width=`${Math.round((sh.A??0)/stot*100)}%`;
+
+  const it=s.stats?.interceptions??{A:0,B:0};
+  const itot=Math.max(1,(it.A??0)+(it.B??0));
+  document.getElementById("int-a").textContent=it.A??0;
+  document.getElementById("int-b").textContent=it.B??0;
+  document.getElementById("intb-a").style.width=`${Math.round((it.A??0)/itot*100)}%`;
+
+  if(s.events?.length){
+    const feed=document.getElementById("feed");
+    feed.innerHTML=[...s.events].reverse().map(ev=>{
+      let cls="ev-warn";
+      if(ev.includes("GOAL"))   cls="ev-goal";
+      else if(ev.includes("🎯")) cls="ev-pass";
+      else if(ev.includes("💨")||ev.toLowerCase().includes("shot")) cls="ev-shot";
+      else if(ev.includes("⏱")) cls="ev-time";
+      return `<div class="${cls}">${ev}</div>`;
+    }).join("");
+    feed.scrollTop=0;
+    document.getElementById("ticker").innerHTML=`<b>●</b>&nbsp; ${s.events.at(-1)}`;
+  }
+}
+
+function setConnected(ok){
+  document.getElementById("conn-dot").className=ok?"ok":"";
+  document.getElementById("conn-lbl").textContent=ok?"connected":"offline";
+}
+
+function showFinal(s){
+  const sum=s.summary??{};
+  const nameA=s.club_a?.name||"Team A";
+  const nameB=s.club_b?.name||"Team B";
+  const winner=sum.winner==="Draw"?"IT'S A DRAW!":
+    sum.winner==="A"?`${nameA} WINS!`:`${nameB} WINS!`;
+  document.getElementById("final-title").textContent=winner;
+  document.getElementById("final-score").textContent=
+    `${nameA.split(" ")[0]}  ${s.score?.A??0}  —  ${s.score?.B??0}  ${nameB.split(" ")[0]}`;
+  document.getElementById("final-notes").textContent=sum.notes??"";
+  document.getElementById("ov-final").classList.add("show");
+}
+
+/* ═══════════════════  POLLING  ═══════════════════ */
+async function fetchState(){
+  try{
+    const res=await fetch(`${API}/state`);
+    if(!res.ok) throw new Error(res.status);
+    const state=await res.json();
+    setConnected(true);
+    interpolate(state);
+    updateUI(state);
+    if(!state.running&&live){
+      live=false; clearInterval(pollTimer); pollTimer=null;
+      showFinal(state);
+      document.getElementById("btn-start").disabled=false;
+      document.getElementById("btn-validate").disabled=!(selectedA&&selectedB);
+    }
+  } catch{
+    setConnected(false);
+    document.getElementById("ticker").innerHTML=
+      `<b style="color:var(--b)">●</b>&nbsp; Cannot reach backend — run <code>python main.py</code>`;
+  }
+}
+
+/* ═══════════════════  COUNTDOWN  ═══════════════════ */
+function countdown(n, done){
+  const ov=document.getElementById("ov-count");
+  const num=document.getElementById("cnt-num");
+  ov.classList.add("show"); num.textContent=n;
+  const tick=()=>{
+    n--;
+    if(n<=0){ov.classList.remove("show");done();return}
+    num.textContent=n; setTimeout(tick,800);
+  };
+  setTimeout(tick,800);
+}
+
+/* ═══════════════════  CLUBS  ═══════════════════ */
+async function loadClubs(){
+  try{
+    const res=await fetch(`${API}/clubs`);
+    const data=await res.json();
+    clubs=data.clubs;
+    renderClubGrids();
+    setConnected(true);
+  } catch{
+    setConnected(false);
+    document.getElementById("ticker").innerHTML=
+      `<b style="color:var(--b)">●</b>&nbsp; Backend offline — run <code>python main.py</code> then refresh`;
+  }
+}
+
+function renderClubGrids(){
+  ["A","B"].forEach(team=>{
+    const grid=document.getElementById(`grid-${team.toLowerCase()}`);
+    grid.innerHTML="";
+    clubs.forEach(club=>{
+      const card=document.createElement("div");
+      card.className="club-card";
+      card.dataset.id=club.id;
+      card.innerHTML=`
+        <div class="club-badge">${club.badge}</div>
+        <div class="club-name">${club.name}</div>
+        <div class="club-sub">${club.formation} · ${club.aggression}</div>
+      `;
+      card.onclick=()=>selectClub(team, club, card);
+      grid.appendChild(card);
+    });
+  });
+}
+
+function selectClub(team, club, card){
+  // Deselect previous
+  const grid=document.getElementById(`grid-${team.toLowerCase()}`);
+  grid.querySelectorAll(".club-card").forEach(c=>{
+    c.classList.remove("selected-a","selected-b");
+  });
+  card.classList.add(team==="A"?"selected-a":"selected-b");
+
+  if(team==="A"){
+    selectedA=club;
+    document.getElementById("form-a").textContent=club.formation;
+    document.getElementById("agg-a").textContent=club.aggression;
+  } else {
+    selectedB=club;
+    document.getElementById("form-b").textContent=club.formation;
+    document.getElementById("agg-b").textContent=club.aggression;
+  }
+
+  const both=selectedA&&selectedB;
+  document.getElementById("btn-start").disabled=!both;
+  document.getElementById("btn-validate").disabled=!both;
+}
+
+/* ═══════════════════  MATCH CONTROLS  ═══════════════════ */
+async function startMatch(){
+  if(!selectedA||!selectedB) return;
+  const btn=document.getElementById("btn-start");
+  btn.disabled=true;
+  countdown(3, async()=>{
+    try{
+      const res=await fetch(`${API}/start`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          formationA:selectedA.formation,
+          formationB:selectedB.formation,
+          attackTeam,
+          aggression:"medium",
+          clubA:selectedA.id,
+          clubB:selectedB.id,
+        }),
+      });
+      if(!res.ok){const e=await res.json();alert(e.detail??"Server error");btn.disabled=false;return}
+      rAgents={}; heat.A=[]; heat.B=[]; live=true;
+      document.getElementById("ov-final").classList.remove("show");
+      if(pollTimer) clearInterval(pollTimer);
+      pollTimer=setInterval(fetchState,POLL_MS);
+      setConnected(true);
+    } catch{
+      alert("Cannot connect.\n\nMake sure the server is running:\n  cd backend && python main.py");
+      btn.disabled=false;
+    }
+  });
+}
+
+async function resetMatch(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null}
+  live=false; rAgents={}; rBall={x:50,y:30}; heat.A=[]; heat.B=[];
+  try{await fetch(`${API}/reset`,{method:"POST"})} catch{}
+  document.getElementById("ov-final").classList.remove("show");
+  document.getElementById("ov-count").classList.remove("show");
+  document.getElementById("btn-start").disabled=!(selectedA&&selectedB);
+  document.getElementById("btn-validate").disabled=!(selectedA&&selectedB);
+  document.getElementById("clock").textContent="00:30";
+  document.getElementById("clock").className="";
+  document.getElementById("sc-a").textContent="0";
+  document.getElementById("sc-b").textContent="0";
+  document.getElementById("feed").textContent="Select clubs to start…";
+  document.getElementById("ticker").innerHTML="<b>●</b>&nbsp; Select clubs and press START";
+  setConnected(false);
+}
+
+function setAttack(t){
+  attackTeam=t;
+  document.getElementById("att-a").className="pill"+(t==="A"?" on-a":"");
+  document.getElementById("att-b").className="pill"+(t==="B"?" on-b":"");
+}
+
+function toggleHeat(){
+  heatOn=!heatOn;
+  document.getElementById("btn-heat").classList.toggle("on",heatOn);
+}
+
+/* ═══════════════════  VALIDATION  ═══════════════════ */
+async function startValidation(){
+  if(!selectedA||!selectedB) return;
+  const panel=document.getElementById("val-panel");
+  const loading=document.getElementById("val-loading");
+  const results=document.getElementById("val-results");
+  panel.classList.add("show");
+  loading.style.display="flex";
+  results.style.display="none";
+  results.innerHTML="";
+
+  // Animate loading text
+  const msgs=["Running match 1 of 8…","Running match 2 of 8…","Running match 3 of 8…",
+               "Running match 4 of 8…","Running match 5 of 8…","Running match 6 of 8…",
+               "Running match 7 of 8…","Running match 8 of 8…","Compiling results…"];
+  let mi=0;
+  const loadTxt=document.getElementById("val-loading-txt");
+  const msgTimer=setInterval(()=>{
+    if(mi<msgs.length){loadTxt.textContent=msgs[mi++]}
+  },1100);
+
+  try{
+    const res=await fetch(`${API}/validate`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({clubA:selectedA.id, clubB:selectedB.id}),
+    });
+    clearInterval(msgTimer);
+    if(!res.ok){const e=await res.json();throw new Error(e.detail||"Error")}
+    const data=await res.json();
+    renderValidationResults(data);
+    loading.style.display="none";
+    results.style.display="flex";
+  } catch(e){
+    clearInterval(msgTimer);
+    loading.innerHTML=`<p style="color:var(--b)">Error: ${e.message}</p>`;
+  }
+}
+
+function closeValidation(){
+  document.getElementById("val-panel").classList.remove("show");
+}
+
+function renderValidationResults(d){
+  const r=document.getElementById("val-results");
+  const a=d.club_a, b=d.club_b, av=d.averages, rec=d.record;
+  const nameA=a.name||"Team A", nameB=b.name||"Team B";
+
+  // Clubs header
+  r.innerHTML=`
+    <div class="val-clubs">
+      <div class="val-club">
+        <div class="val-club-name">${a.badge||""} ${nameA}</div>
+        <div class="val-club-sub">${a.formation} · ${a.aggression}</div>
+      </div>
+      <div class="val-vs">VS</div>
+      <div class="val-club" style="text-align:right">
+        <div class="val-club-name">${nameB} ${b.badge||""}</div>
+        <div class="val-club-sub">${b.formation} · ${b.aggression}</div>
+      </div>
+    </div>
+
+    <!-- Overall winner -->
+    <div class="val-winner">
+      <div class="wname">${d.overall_winner==="Draw"?"DRAW":d.overall_winner.toUpperCase()} ${d.overall_winner!=="Draw"?"WINS":""}</div>
+      <div class="wsub">${rec.wins_a} wins · ${rec.draws} draws · ${rec.wins_b} wins &nbsp;·&nbsp; across 8 matches</div>
+    </div>
+
+    <!-- Stats summary -->
+    <div class="val-summary">
+      <div class="val-card">
+        <div class="big" style="color:var(--a)">${d.totals.goals_a}</div>
+        <div class="big" style="color:var(--b)">${d.totals.goals_b}</div>
+        <div class="sub">Total Goals</div>
+      </div>
+      <div class="val-card">
+        <div class="big" style="color:var(--a)">${av.shots_a}</div>
+        <div class="big" style="color:var(--b)">${av.shots_b}</div>
+        <div class="sub">Avg Shots</div>
+      </div>
+      <div class="val-card">
+        <div class="big" style="color:var(--a)">${av.passes_a}</div>
+        <div class="big" style="color:var(--b)">${av.passes_b}</div>
+        <div class="sub">Avg Passes</div>
+      </div>
+      <div class="val-card">
+        <div class="big" style="color:var(--a)">${av.poss_a}%</div>
+        <div class="big" style="color:var(--b)">${av.poss_b}%</div>
+        <div class="sub">Avg Possession</div>
+      </div>
+    </div>
+
+    <!-- Per-match table -->
+    <div style="background:var(--s2);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <table class="val-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Agg</th>
+            <th style="color:var(--a)">${nameA}</th>
+            <th style="color:var(--b)">${nameB}</th>
+            <th>Shots A</th><th>Shots B</th>
+            <th>Poss A</th><th>Winner</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${d.matches.map(m=>{
+            const wclass = m.winner==="A"?"win-a": m.winner==="B"?"win-b":"win-d";
+            const wlabel = m.winner==="A"?nameA: m.winner==="B"?nameB:"Draw";
+            return `<tr>
+              <td>${m.match}</td>
+              <td>${m.aggression}</td>
+              <td style="color:var(--a);font-weight:600">${m.score_a}</td>
+              <td style="color:var(--b);font-weight:600">${m.score_b}</td>
+              <td>${m.shots_a}</td><td>${m.shots_b}</td>
+              <td>${m.poss_a}%</td>
+              <td class="${wclass}">${wlabel}</td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/* ═══════════════════  BOOT  ═══════════════════ */
+loadClubs();
+</script>
+</body>
+</html>
